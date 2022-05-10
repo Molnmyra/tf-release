@@ -114,11 +114,9 @@ resource "github_actions_environment_secret" "client_secret" {
   plaintext_value  = azuread_service_principal_password.tfstate[each.key].value
 }
 
-resource "github_actions_environment_secret" "demo_prefix" {
-    for_each = var.environments
+resource "github_actions_secret" "demo_prefix" {
 
   repository       = data.github_repository.tfstate.name
-  environment      = github_repository_environment.tfstate[each.key].environment
   secret_name      = "DEMO_PREFIX"
   plaintext_value  = local.prefix
 }
