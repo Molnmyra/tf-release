@@ -1,0 +1,93 @@
+# Triggers: Manual on chosen environment
+
+name: "MANUAL Terraform Plan"
+concurrency: ${{ github.workflow }}
+on:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+    inputs:
+      azure_environment:
+        description: 'For what environment?'
+        required: true
+        type: choice
+        default: "dev"
+        options:
+          - "dev"
+          - "test"
+          - "prd"
+
+jobs:
+  variables:
+    name: Variables
+    runs-on: ubuntu-latest
+    outputs:
+      GITHUB_SHA_SHORT: ${{ steps.variables.outputs.GITHUB_SHA_SHORT }}
+      GITHUB_BRANCH_SLUG: ${{ steps.variables.outputs.GITHUB_BRANCH_SLUG }}
+      GITHUB_REPO_NAME: ${{ steps.variables.outputs.GITHUB_REPO_NAME }}
+    steps:
+      - uses: actions/github-script@v4
+        id: variables
+        with:
+          script: |
+            const sha = context.sha.substring(0,7)
+            const branch = context.ref.split('/').pop()
+            const repo_name = context.repository.split('/').pop().toLowerCase()
+            core.setOutput('GITHUB_SHA_SHORT', sha)
+            core.setOutput('GITHUB_BRANCH_SLUG', branch)
+            core.setOutput('GITHUB_REPO_NAME', repo_name)
+  terraform:
+    name: "Terraform Validate, Plan"
+    runs-on: ubuntu-latest
+    concurrency: terraform-${{ github.event.inputs.azure_environment }}
+    environment: 
+      name: ${{ github.event.inputs.azure_environment }}
+    
+    env:
+      # Target subscription
+      ARM_SUBSCRIPTION_ID: ${{ secrets.TF_ARM_SUBSCRIPTION_ID }}
+      ARM_CLIENT_ID: ${{ secrets.TF_ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.TF_ARM_CLIENT_SECRET }}
+      ARM_TENANT_ID: ${{ secrets.TF_ARM_TENANT_ID }}  # always same!
+
+      # Backend terraform state
+      TF_BACKEND_RG_NAME: rg-${{ github.event.inputs.azure_environment }}-tf-release
+      TF_BACKEND_STGACCT_NAME: 4a54d${{ github.event.inputs.azure_environment }}tfstate
+      TF_BACKEND_CONTAINER_NAME: tfstate
+      TF_BACKEND_KEY: ${{ needs.variables.outputs.GITHUB_REPO_NAME }}/${{ github.event.inputs.azure_environment }}.tfstate
+
+      # Env vars accessible inside Terraform files
+      TF_VAR_azure_environment: ${{ github.event.inputs.azure_environment }}
+      TF_VAR_subscription_id: ${{ secrets.TF_ARM_SUBSCRIPTION_ID }}
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./terraform
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+      
+      - name: Terraform Format
+        id: fmt
+        run: terraform fmt -check -no-color -diff
+
+      - name: Terraform Init
+        id: init
+        run: |
+          terraform init -input=false -upgrade \
+            -backend-config="resource_group_name=${TF_BACKEND_RG_NAME}" \
+            -backend-config="storage_account_name=${TF_BACKEND_STGACCT_NAME}" \
+            -backend-config="container_name=${TF_BACKEND_CONTAINER_NAME}" \
+            -backend-config="key=${TF_BACKEND_KEY}" 
+        
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan
