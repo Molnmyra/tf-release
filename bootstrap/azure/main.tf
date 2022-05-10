@@ -56,6 +56,14 @@ resource "azuread_service_principal_password" "tfstate" {
   }
 }
 
+resource "azurerm_role_assignment" "contributor" {
+  for_each = var.environments
+
+  scope = azurerm_storage_account.tfstate[each.key].id
+  role_definition_name = "Contributor"
+  principal_id = azuread_service_principal.tfstate[each.key].object_id
+}
+
 resource "github_repository_environment" "tfstate" {
   for_each = var.environments
 
@@ -104,4 +112,13 @@ resource "github_actions_environment_secret" "client_secret" {
   environment      = github_repository_environment.tfstate[each.key].environment
   secret_name      = "TF_ARM_CLIENT_SECRET"
   plaintext_value  = azuread_service_principal_password.tfstate[each.key].value
+}
+
+resource "github_actions_environment_secret" "demo_prefix" {
+    for_each = var.environments
+
+  repository       = data.github_repository.tfstate.name
+  environment      = github_repository_environment.tfstate[each.key].environment
+  secret_name      = "DEMO_PREFIX"
+  plaintext_value  = local.prefix
 }
