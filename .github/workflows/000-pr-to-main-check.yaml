@@ -4,6 +4,9 @@ name: "[PR] Format, Validate and Plan DEV"
 concurrency: ${{ github.workflow }}
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
   pull_request:
     branches:    
       - main
@@ -21,24 +24,32 @@ jobs:
       GITHUB_SHA_SHORT: ${{ steps.variables.outputs.GITHUB_SHA_SHORT }}
       GITHUB_BRANCH_SLUG: ${{ steps.variables.outputs.GITHUB_BRANCH_SLUG }}
       GITHUB_REPO_NAME: ${{ steps.variables.outputs.GITHUB_REPO_NAME }}
+      GITHUB_ENVIRONMENT: ${{ steps.variables.outputs.GITHUB_ENVIRONMENT }}
     steps:
       - uses: actions/github-script@v6
         id: variables
         with:
           script: |
+            console.log(context)
             const sha = context.sha.substring(0,7)
             const branch = context.ref.split('/').pop()
             const repo_name = context.payload.repository.full_name.split('/').pop().toLowerCase()
+            if (context.ref == 'refs/heads/main' && context.eventName == 'push') {
+              const github_environment = "dev-apply"
+            } else {
+              const github_environment = "dev-plan"
+            }
             core.setOutput('GITHUB_SHA_SHORT', sha)
             core.setOutput('GITHUB_BRANCH_SLUG', branch)
             core.setOutput('GITHUB_REPO_NAME', repo_name)
+            core.setOutput('GITHUB_ENVIRONMENT', github_environment)
   terraform:
     name: "Terraform Validate and Plan"
     needs: [ variables ]
     runs-on: ubuntu-latest
     concurrency: terraform-dev
     environment: 
-      name: dev-plan
+      name: ${{ needs.variables.outputs.GITHUB_ENVIRONMENT }}
     
     env:
       # Target subscription
@@ -72,6 +83,7 @@ jobs:
       
       - name: Terraform Format
         id: fmt
+        if: github.event_name == 'pull_request'
         run: terraform fmt -check -no-color -diff
 
       - name: Terraform Init
@@ -85,8 +97,15 @@ jobs:
         
       - name: Terraform Validate
         id: validate
+        if: github.event_name == 'pull_request'
         run: terraform validate
 
       - name: Terraform Plan
         id: plan
+        if: github.event_name == 'pull_request'
         run: terraform plan -lock=false
+
+      - name: Terraform Apply
+        id: apply
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: terraform apply -auto-approve
