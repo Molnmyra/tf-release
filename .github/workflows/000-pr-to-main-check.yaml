@@ -1,8 +1,9 @@
 # Triggers: Manual on chosen environment
 
-name: "[PR] Format, Validate and Plan"
+name: "[PR] Format, Validate and Plan DEV"
 concurrency: ${{ github.workflow }}
 on:
+  workflow_dispatch:
   pull_request:
     branches:    
       - main
