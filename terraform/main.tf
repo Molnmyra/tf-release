@@ -5,4 +5,8 @@ locals {
 resource "azurerm_private_dns_zone" "private_dns" {
   name                = "${var.azure_environment}.azure.local"
   resource_group_name = "${local.prefix}-rg-${var.azure_environment}-environment"
+
+  tags = {
+    "commit" = var.github_sha
+  }
 }
