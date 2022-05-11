@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     concurrency: terraform-dev
     environment: 
-      name: dev-apply
+      name: dev-plan
     
     env:
       # Target subscription
