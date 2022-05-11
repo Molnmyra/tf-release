@@ -13,3 +13,9 @@ variable "azure_location" {
   default     = "swedencentral"
   description = "Default location for resource deployment"
 }
+
+variable "github_sha" {
+  type        = string
+  default     = "none"
+  description = "sha of github commit"
+}
