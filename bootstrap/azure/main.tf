@@ -12,6 +12,13 @@ resource "azurerm_resource_group" "tfstate" {
   location = var.default_location
 }
 
+resource "azurerm_resource_group" "environments" {
+  for_each = var.environments
+
+  name     = "${local.prefix}-rg-${each.key}-environment"
+  location = var.default_location
+}
+
 resource "azurerm_storage_account" "tfstate" {
   for_each = var.environments
 
@@ -72,6 +79,14 @@ resource "azurerm_role_assignment" "tfstate_apply" {
 
   scope                = azurerm_storage_account.tfstate[split("-",each.key)[0]].id
   role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azuread_service_principal.tfstate[each.key].object_id
+}
+
+resource "azurerm_role_assignment" "environments" {
+  for_each = local.appliers
+
+  scope                = azurerm_resource_group.environments[split("-",each.key)[0]].id
+  role_definition_name = "Owner"
   principal_id         = azuread_service_principal.tfstate[each.key].object_id
 }
 
