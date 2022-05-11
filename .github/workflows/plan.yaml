@@ -33,12 +33,10 @@ jobs:
           script: |
             const sha = context.sha.substring(0,7)
             const branch = context.ref.split('/').pop()
-            const repo_name = context.repository.split('/').pop().toLowerCase()
             core.setOutput('GITHUB_SHA_SHORT', sha)
             core.setOutput('GITHUB_BRANCH_SLUG', branch)
-            core.setOutput('GITHUB_REPO_NAME', repo_name)
   terraform:
-    name: "Terraform Validate, Plan"
+    name: "Terraform Validate and Plan"
     runs-on: ubuntu-latest
     concurrency: terraform-${{ github.event.inputs.azure_environment }}
     environment: 
