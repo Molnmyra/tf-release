@@ -10,6 +10,6 @@ variable "azure_environment" {
 
 variable "azure_location" {
   type        = string
-  default     = "westeurope"
+  default     = "swedencentral"
   description = "Default location for resource deployment"
 }
