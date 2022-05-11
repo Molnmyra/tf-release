@@ -33,7 +33,7 @@ jobs:
           script: |
             const sha = context.sha.substring(0,7)
             const branch = context.ref.split('/').pop()
-            const repo_name = context.repository.full_name.split('/').pop().toLowerCase()
+            const repo_name = context.payload.repository.full_name.split('/').pop().toLowerCase()
             core.setOutput('GITHUB_SHA_SHORT', sha)
             core.setOutput('GITHUB_BRANCH_SLUG', branch)
             core.setOutput('GITHUB_REPO_NAME', repo_name)
