@@ -35,8 +35,10 @@ jobs:
             const branch = context.ref.split('/').pop()
             const repo_name = context.payload.repository.full_name.split('/').pop().toLowerCase()
             if (context.ref == 'refs/heads/main' && context.eventName == 'push') {
+              console.log('apply')
               const github_environment = 'dev-apply'
             } else {
+              console.log('plan')
               const github_environment = 'dev-plan'
             }
             core.setOutput('GITHUB_SHA_SHORT', sha)
