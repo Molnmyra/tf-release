@@ -1,5 +1,8 @@
 locals {
   prefix = substr(sha1("${data.azurerm_client_config.current.tenant_id}/${data.azurerm_client_config.current.subscription_id}"), 0, 5)
+  principals = setunion(local.planners,local.appliers)
+  planners = toset([for p in var.environments : "${p}-plan"])
+  appliers = toset([for p in var.environments : "${p}-apply"])
 }
 
 resource "azurerm_resource_group" "tfstate" {
@@ -29,14 +32,14 @@ resource "azurerm_storage_container" "tfstate" {
 }
 
 resource "azuread_application" "tfstate" {
-  for_each = var.environments
+  for_each = local.principals
 
   display_name = "${local.prefix}-sp-${each.key}"
   owners       = [data.azuread_client_config.current.object_id]
 }
 
 resource "azuread_service_principal" "tfstate" {
-  for_each = var.environments
+  for_each = local.principals
 
   application_id               = azuread_application.tfstate[each.key].application_id
   app_role_assignment_required = false
@@ -48,7 +51,7 @@ resource "time_rotating" "tfstate" {
 }
 
 resource "azuread_service_principal_password" "tfstate" {
-  for_each = var.environments
+  for_each = local.principals
 
   service_principal_id = azuread_service_principal.tfstate[each.key].object_id
   rotate_when_changed = {
@@ -56,21 +59,29 @@ resource "azuread_service_principal_password" "tfstate" {
   }
 }
 
-resource "azurerm_role_assignment" "contributor" {
-  for_each = var.environments
+resource "azurerm_role_assignment" "tfstate_plan" {
+  for_each = local.planners
 
-  scope = azurerm_storage_account.tfstate[each.key].id
-  role_definition_name = "Contributor"
-  principal_id = azuread_service_principal.tfstate[each.key].object_id
+  scope                = azurerm_storage_account.tfstate[split("-",each.key)[0]].id
+  role_definition_name = "Storage Blob Data Reader"
+  principal_id         = azuread_service_principal.tfstate[each.key].object_id
+}
+
+resource "azurerm_role_assignment" "tfstate_apply" {
+  for_each = local.appliers
+
+  scope                = azurerm_storage_account.tfstate[split("-",each.key)[0]].id
+  role_definition_name = "Storage Blob Data Contributor"
+  principal_id         = azuread_service_principal.tfstate[each.key].object_id
 }
 
 resource "github_repository_environment" "tfstate" {
-  for_each = var.environments
+  for_each = local.principals
 
   environment = each.key
   repository  = data.github_repository.tfstate.name
   reviewers {
-    users = [ data.github_user.current.id ]
+    users = split("-",each.key)[1] == "apply" ? [data.github_user.current.id] : []
   }
   deployment_branch_policy {
     protected_branches     = true
@@ -79,44 +90,44 @@ resource "github_repository_environment" "tfstate" {
 }
 
 resource "github_actions_environment_secret" "client_id" {
-    for_each = var.environments
+  for_each = local.principals
 
-  repository       = data.github_repository.tfstate.name
-  environment      = github_repository_environment.tfstate[each.key].environment
-  secret_name      = "TF_ARM_CLIENT_ID"
-  plaintext_value  = azuread_service_principal.tfstate[each.key].application_id
+  repository      = data.github_repository.tfstate.name
+  environment     = github_repository_environment.tfstate[each.key].environment
+  secret_name     = "TF_ARM_CLIENT_ID"
+  plaintext_value = azuread_service_principal.tfstate[each.key].application_id
 }
 
 resource "github_actions_environment_secret" "tenant_id" {
-    for_each = var.environments
+  for_each = local.principals
 
-  repository       = data.github_repository.tfstate.name
-  environment      = github_repository_environment.tfstate[each.key].environment
-  secret_name      = "TF_ARM_TENANT_ID"
-  plaintext_value  = azuread_service_principal.tfstate[each.key].application_tenant_id
+  repository      = data.github_repository.tfstate.name
+  environment     = github_repository_environment.tfstate[each.key].environment
+  secret_name     = "TF_ARM_TENANT_ID"
+  plaintext_value = azuread_service_principal.tfstate[each.key].application_tenant_id
 }
 
 resource "github_actions_environment_secret" "subscription_id" {
-    for_each = var.environments
+  for_each = local.principals
 
-  repository       = data.github_repository.tfstate.name
-  environment      = github_repository_environment.tfstate[each.key].environment
-  secret_name      = "TF_ARM_SUBSCRIPTION_ID"
-  plaintext_value  = data.azurerm_client_config.current.subscription_id
+  repository      = data.github_repository.tfstate.name
+  environment     = github_repository_environment.tfstate[each.key].environment
+  secret_name     = "TF_ARM_SUBSCRIPTION_ID"
+  plaintext_value = data.azurerm_client_config.current.subscription_id
 }
 
 resource "github_actions_environment_secret" "client_secret" {
-    for_each = var.environments
+  for_each = local.principals
 
-  repository       = data.github_repository.tfstate.name
-  environment      = github_repository_environment.tfstate[each.key].environment
-  secret_name      = "TF_ARM_CLIENT_SECRET"
-  plaintext_value  = azuread_service_principal_password.tfstate[each.key].value
+  repository      = data.github_repository.tfstate.name
+  environment     = github_repository_environment.tfstate[each.key].environment
+  secret_name     = "TF_ARM_CLIENT_SECRET"
+  plaintext_value = azuread_service_principal_password.tfstate[each.key].value
 }
 
 resource "github_actions_secret" "demo_prefix" {
 
-  repository       = data.github_repository.tfstate.name
-  secret_name      = "DEMO_PREFIX"
-  plaintext_value  = local.prefix
+  repository      = data.github_repository.tfstate.name
+  secret_name     = "DEMO_PREFIX"
+  plaintext_value = local.prefix
 }
