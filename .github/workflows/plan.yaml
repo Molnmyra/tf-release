@@ -35,6 +35,7 @@ jobs:
             const branch = context.ref.split('/').pop()
             core.setOutput('GITHUB_SHA_SHORT', sha)
             core.setOutput('GITHUB_BRANCH_SLUG', branch)
+            console.log(context)
   terraform:
     name: "Terraform Validate and Plan"
     runs-on: ubuntu-latest
