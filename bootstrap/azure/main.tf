@@ -74,6 +74,14 @@ resource "azurerm_role_assignment" "tfstate_plan" {
   principal_id         = azuread_service_principal.tfstate[each.key].object_id
 }
 
+resource "azurerm_role_assignment" "environments_reader" {
+  for_each = local.planners
+
+  scope                = azurerm_resource_group.environments[split("-",each.key)[0]].id
+  role_definition_name = "Reader"
+  principal_id         = azuread_service_principal.tfstate[each.key].object_id
+}
+
 resource "azurerm_role_assignment" "tfstate_apply" {
   for_each = local.appliers
 
