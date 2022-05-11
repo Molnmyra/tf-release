@@ -11,6 +11,7 @@ on:
 
 env:
   ARM_USE_AZUREAD: "true"
+  AZURE_ENVIRONMENT: "dev"
 
 jobs:
   variables:
@@ -33,10 +34,11 @@ jobs:
             core.setOutput('GITHUB_REPO_NAME', repo_name)
   terraform:
     name: "Terraform Validate and Plan"
+    needs: [ variables ]
     runs-on: ubuntu-latest
-    concurrency: terraform-${{ github.event.inputs.azure_environment }}
+    concurrency: terraform-${{ env.AZURE_ENVIRONMENT }}
     environment: 
-      name: ${{ github.event.inputs.azure_environment }}-plan
+      name: ${{ env.AZURE_ENVIRONMENT }}-plan
     
     env:
       # Target subscription
@@ -46,13 +48,13 @@ jobs:
       ARM_TENANT_ID: ${{ secrets.TF_ARM_TENANT_ID }}  # always same!
 
       # Backend terraform state
-      TF_BACKEND_RG_NAME: ${{ secrets.DEMO_PREFIX }}-rg-${{ github.event.inputs.azure_environment }}-tfstate
-      TF_BACKEND_STGACCT_NAME: ${{ secrets.DEMO_PREFIX }}${{ github.event.inputs.azure_environment }}tfstate
+      TF_BACKEND_RG_NAME: ${{ secrets.DEMO_PREFIX }}-rg-${{ env.AZURE_ENVIRONMENT }}-tfstate
+      TF_BACKEND_STGACCT_NAME: ${{ secrets.DEMO_PREFIX }}${{ env.AZURE_ENVIRONMENT }}tfstate
       TF_BACKEND_CONTAINER_NAME: tfstate
-      TF_BACKEND_KEY: ${{ needs.variables.outputs.GITHUB_REPO_NAME }}/${{ github.event.inputs.azure_environment }}.tfstate
+      TF_BACKEND_KEY: ${{ needs.variables.outputs.GITHUB_REPO_NAME }}/${{ env.AZURE_ENVIRONMENT }}.tfstate
 
       # Env vars accessible inside Terraform files
-      TF_VAR_azure_environment: ${{ github.event.inputs.azure_environment }}
+      TF_VAR_azure_environment: ${{ env.AZURE_ENVIRONMENT }}
       TF_VAR_subscription_id: ${{ secrets.TF_ARM_SUBSCRIPTION_ID }}
       TF_VAR_github_sha: ${{ needs.variables.outputs.GITHUB_SHA_SHORT }}
 
