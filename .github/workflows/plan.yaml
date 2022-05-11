@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-latest
     concurrency: terraform-${{ github.event.inputs.azure_environment }}
     environment: 
-      name: ${{ github.event.inputs.azure_environment }}
+      name: ${{ github.event.inputs.azure_environment }}-plan
     
     env:
       # Target subscription
@@ -98,7 +98,7 @@ jobs:
     runs-on: ubuntu-latest
     concurrency: terraform-${{ github.event.inputs.azure_environment }}
     environment: 
-      name: ${{ github.event.inputs.azure_environment }}
+      name: ${{ github.event.inputs.azure_environment }}-apply
     
     env:
       # Target subscription
