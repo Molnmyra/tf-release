@@ -4,6 +4,10 @@ name: "[PR] Format, Validate and Plan DEV"
 concurrency: ${{ github.workflow }}
 on:
   workflow_dispatch:
+  release:
+    types:
+      - prereleased
+      - released
   push:
     branches:
       - main
