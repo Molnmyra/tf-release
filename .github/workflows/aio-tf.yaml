@@ -1,0 +1,182 @@
+name: "AIO Terraform PR, Prerelease & Release workflow"
+concurrency: ${{ github.workflow }}
+on:
+  workflow_dispatch:
+    inputs:
+      azure_environment:
+        description: 'For what environment?'
+        required: true
+        type: choice
+        default: "dev"
+        options:
+          - "dev"
+          - "test"
+          - "prd"
+  release:
+    types:
+      - prereleased # sets environment to test and runs fmt,init,validate,plan and wait for approval before apply
+      - released # sets environment to prd and runs fmt,init,validate,plan and wait for approval before apply
+  push:
+    branches:
+      - main # set environemnt to dev and runs fmt,init,validate,plan and wait for approval before apply
+  pull_request:
+    branches:    
+      - main # set environment to dev and runs fmt,init,validate,plan
+    paths:
+      - '**.tf'
+
+env:
+  ARM_USE_AZUREAD: "true" # make terraform use service principal to access tfstate
+
+jobs:
+  variables:
+    name: Pre-flight
+    runs-on: ubuntu-latest
+    outputs:
+      GITHUB_SHA_SHORT: ${{ steps.variables.outputs.GITHUB_SHA_SHORT }}
+      GITHUB_BRANCH_SLUG: ${{ steps.variables.outputs.GITHUB_BRANCH_SLUG }}
+      GITHUB_REPO_NAME: ${{ steps.variables.outputs.GITHUB_REPO_NAME }}
+      GITHUB_ENVIRONMENT: ${{ steps.variables.outputs.GITHUB_ENVIRONMENT }}
+      GITHUB_ENVIRONMENT_SUFFIX: ${{ steps.variables.outputs.GITHUB_ENVIRONMENT_SUFFIX }}
+    steps:
+      - uses: actions/github-script@v6
+        id: variables
+        with:
+          script: |
+            console.log(context)
+            const sha = context.sha.substring(0,7)
+            const branch = context.ref.split('/').pop()
+            const repo_name = context.payload.repository.full_name.split('/').pop().toLowerCase()
+            if (context.eventName == 'workflow_dispatch') {
+              core.setOutput('GITHUB_ENVIRONMENT', context.payload.inputs.azure_environment)
+              core.setOutput('GITHUB_ENVIRONMENT_SUFFIX', 'apply')
+            } else if (context.eventName == 'release' && context.payload.action == 'released') {
+              core.setOutput('GITHUB_ENVIRONMENT', 'prod')
+              core.setOutput('GITHUB_ENVIRONMENT_SUFFIX', 'apply')
+            } else if (context.eventName == 'release' && context.payload.action == 'prereleased') {
+              core.setOutput('GITHUB_ENVIRONMENT', 'test')
+              core.setOutput('GITHUB_ENVIRONMENT_SUFFIX', 'apply')
+            } else if (context.ref == 'refs/heads/main' && context.eventName == 'push') {
+              core.setOutput('GITHUB_ENVIRONMENT', 'dev')
+              core.setOutput('GITHUB_ENVIRONMENT_SUFFIX', 'apply')
+            } else if (github.event_name == 'pull_request') {
+              core.setOutput('GITHUB_ENVIRONMENT', 'dev')
+              core.setOutput('GITHUB_ENVIRONMENT_SUFFIX', 'plan')
+            } else {
+              throw 'Unable to determinate which environment to use'
+            }
+            core.setOutput('GITHUB_SHA_SHORT', sha)
+            core.setOutput('GITHUB_BRANCH_SLUG', branch)
+            core.setOutput('GITHUB_REPO_NAME', repo_name)
+            
+  tf-plan:
+    name: "Terraform Format, Validate & Plan"
+    needs: [ variables ]
+    runs-on: ubuntu-latest
+    concurrency: terraform-${{ needs.variables.outputs.GITHUB_ENVIRONMENT }}
+    environment: 
+      name: ${{ needs.variables.outputs.GITHUB_ENVIRONMENT }}-plan
+    
+    env:
+      # Target subscription
+      ARM_SUBSCRIPTION_ID: ${{ secrets.TF_ARM_SUBSCRIPTION_ID }}
+      ARM_CLIENT_ID: ${{ secrets.TF_ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.TF_ARM_CLIENT_SECRET }}
+      ARM_TENANT_ID: ${{ secrets.TF_ARM_TENANT_ID }}  # always same!
+
+      # Backend terraform state
+      TF_BACKEND_RG_NAME: ${{ secrets.DEMO_PREFIX }}-rg-${{ needs.variables.outputs.GITHUB_ENVIRONMENT }}-tfstate
+      TF_BACKEND_STGACCT_NAME: ${{ secrets.DEMO_PREFIX }}${{ needs.variables.outputs.GITHUB_ENVIRONMENT }}tfstate
+      TF_BACKEND_CONTAINER_NAME: tfstate
+      TF_BACKEND_KEY: ${{ needs.variables.outputs.GITHUB_REPO_NAME }}/${{ needs.variables.outputs.GITHUB_ENVIRONMENT }}.tfstate
+
+      # Env vars accessible inside Terraform files
+      TF_VAR_azure_environment: ${{ needs.variables.outputs.GITHUB_ENVIRONMENT }}
+      TF_VAR_subscription_id: ${{ secrets.TF_ARM_SUBSCRIPTION_ID }}
+      TF_VAR_github_sha: ${{ needs.variables.outputs.GITHUB_SHA_SHORT }}
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./terraform
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+      
+      - name: Terraform Format
+        id: fmt
+        run: terraform fmt -check -no-color -diff
+
+      - name: Terraform Init
+        id: init
+        run: |
+          terraform init -input=false -upgrade \
+            -backend-config="resource_group_name=${TF_BACKEND_RG_NAME}" \
+            -backend-config="storage_account_name=${TF_BACKEND_STGACCT_NAME}" \
+            -backend-config="container_name=${TF_BACKEND_CONTAINER_NAME}" \
+            -backend-config="key=${TF_BACKEND_KEY}"
+        
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan
+  
+  tf-apply:
+    if: ${{ needs.variables.outputs.GITHUB_ENVIRONMENT_SUFFIX == 'apply' }}
+    name: Terraform Apply
+    needs: [ variables, tf-plan ]
+    runs-on: ubuntu-latest
+    concurrency: terraform-${{ github.event.inputs.azure_environment }}
+    environment: 
+      name: ${{ needs.variables.outputs.GITHUB_ENVIRONMENT }}-apply
+    
+    env:
+      # Target subscription
+      ARM_SUBSCRIPTION_ID: ${{ secrets.TF_ARM_SUBSCRIPTION_ID }}
+      ARM_CLIENT_ID: ${{ secrets.TF_ARM_CLIENT_ID }}
+      ARM_CLIENT_SECRET: ${{ secrets.TF_ARM_CLIENT_SECRET }}
+      ARM_TENANT_ID: ${{ secrets.TF_ARM_TENANT_ID }}  # always same!
+
+      # Backend terraform state
+      TF_BACKEND_RG_NAME: ${{ secrets.DEMO_PREFIX }}-rg-${{ needs.variables.outputs.GITHUB_ENVIRONMENT }}-tfstate
+      TF_BACKEND_STGACCT_NAME: ${{ secrets.DEMO_PREFIX }}${{ needs.variables.outputs.GITHUB_ENVIRONMENT }}tfstate
+      TF_BACKEND_CONTAINER_NAME: tfstate
+      TF_BACKEND_KEY: ${{ needs.variables.outputs.GITHUB_REPO_NAME }}/${{ needs.variables.outputs.GITHUB_ENVIRONMENT }}.tfstate
+
+      # Env vars accessible inside Terraform files
+      TF_VAR_azure_environment: ${{ needs.variables.outputs.GITHUB_ENVIRONMENT }}
+      TF_VAR_subscription_id: ${{ secrets.TF_ARM_SUBSCRIPTION_ID }}
+      TF_VAR_github_sha: ${{ needs.variables.outputs.GITHUB_SHA_SHORT }}
+
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./terraform
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v1
+      
+      - name: Terraform Init
+        id: init
+        run: |
+          terraform init -input=false -upgrade \
+            -backend-config="resource_group_name=${TF_BACKEND_RG_NAME}" \
+            -backend-config="storage_account_name=${TF_BACKEND_STGACCT_NAME}" \
+            -backend-config="container_name=${TF_BACKEND_CONTAINER_NAME}" \
+            -backend-config="key=${TF_BACKEND_KEY}" 
+      
+      - name: Terraform Apply
+        id: apply
+        run: |
+          terraform apply -auto-approve
