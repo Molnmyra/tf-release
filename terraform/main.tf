@@ -9,6 +9,6 @@ resource "azurerm_private_dns_zone" "private_dns" {
   tags = {
     "commit"      = var.github_sha
     "environment" = var.azure_environment
-    "test"        = "ok"
+    "test"        = "ok2"
   }
 }
