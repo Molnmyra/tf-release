@@ -59,7 +59,7 @@ jobs:
             } else if (context.ref == 'refs/heads/main' && context.eventName == 'push') {
               core.setOutput('GITHUB_ENVIRONMENT', 'dev')
               core.setOutput('GITHUB_ENVIRONMENT_SUFFIX', 'apply')
-            } else if (github.eventName == 'pull_request') {
+            } else if (context.eventName == 'pull_request') {
               core.setOutput('GITHUB_ENVIRONMENT', 'dev')
               core.setOutput('GITHUB_ENVIRONMENT_SUFFIX', 'plan')
             } else {
