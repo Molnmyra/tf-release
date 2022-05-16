@@ -59,11 +59,11 @@ jobs:
             } else if (context.ref == 'refs/heads/main' && context.eventName == 'push') {
               core.setOutput('GITHUB_ENVIRONMENT', 'dev')
               core.setOutput('GITHUB_ENVIRONMENT_SUFFIX', 'apply')
-            } else if (context.eventName == 'pull_request') {
+            } else if (github.eventName == 'pull_request') {
               core.setOutput('GITHUB_ENVIRONMENT', 'dev')
               core.setOutput('GITHUB_ENVIRONMENT_SUFFIX', 'plan')
             } else {
-              throw 'Unable to determinate which environment to use'
+              throw 'Unable to determinate which environment to use. (context.eventName=='+ context.eventName +', context.ref=='+ context.ref +', context.payload.action=='+ context.payload.action +')'
             }
             core.setOutput('GITHUB_SHA_SHORT', sha)
             core.setOutput('GITHUB_BRANCH_SLUG', branch)
